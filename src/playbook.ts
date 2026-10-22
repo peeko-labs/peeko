@@ -79,7 +79,7 @@ export function playbook(m: Mapping, ref?: string): string {
       `STEP 1. Find the customer (${m.find.source}).`,
       `${ref ? `The user gave: ${ref}.` : "$ref is what the user gave:"} a ${m.processor} customer id, a ${m.app} user id, an email or a phone number.\n${find}\nThe row's id is $user below. No row: tell the user in one line that nothing matched, and stop.`,
     ),
-    block("STEP 2. Read everything. Replace $user and run each query exactly as written. Keep every row.", queries),
+    block("STEP 2. Read everything. Replace $user and run each query exactly as written, one at a time, never in parallel: the database tool has one connection and a burst wedges it. Keep every row.", queries),
     block(
       "STEP 3. Write the draft. The exact shape is in check_case's description.",
       [
