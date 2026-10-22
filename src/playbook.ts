@@ -85,7 +85,7 @@ export function playbook(m: Mapping, ref?: string): string {
       [
         `- label: what the evidence says. Coached into sending money is scam_victim. An account passing money through for someone else is money_mule. A deposit from a card or bank that is not theirs is stolen_card. A known account with a new device and new destinations is account_takeover. A hold with nothing wrong behind it is false_positive. Unsure is unknown.`,
         `- processor: "${m.processor}".`,
-        `- summary: 3 to 6 full sentences. Who the customer is to ${m.processor} and to ${m.app}, what happened in order, what ${m.app} did, where the money is now.`,
+        `- summary: 3 to 6 short sentences. How long the customer has been with ${m.app} and from where, whether identity was verified, what happened in order, what ${m.app} did, where the money is now. Never an id of any kind: the header carries them. Amounts, times and counts, yes.`,
         `- held_since: when ${m.processor} put the money or the customer on hold, if it did.`,
         `- customer.ids: only the customer: their id in each system (system "${m.app}" kind "user"; system "${m.processor}" kind "customer"). Nothing they own goes here.`,
         `- customer.status: the latest state each system holds them in, in words ("Active, identity approved", "Sends and withdrawals blocked"), with when it was set.`,
