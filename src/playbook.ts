@@ -79,7 +79,7 @@ export function playbook(m: Mapping, ref?: string): string {
       `STEP 1. Find the customer (${m.find.source}).`,
       `${ref ? `The user gave: ${ref}.` : "$ref is what the user gave:"} a ${m.processor} customer id, a ${m.app} user id, an email or a phone number.\n${find}\nThe row's id is $user below. No row: tell the user in one line that nothing matched, and stop.`,
     ),
-    block("STEP 2. Read everything. Replace $user and run each query exactly as written, one at a time, never in parallel: the database tool has one connection and a burst wedges it. Keep every row.", queries),
+    block("STEP 2. Read everything. Replace $user and run each query exactly as written, one at a time: some database tools hold a single connection. Keep every row.", queries),
     block(
       "STEP 3. Write the draft. The exact shape is in check_case's description.",
       [
@@ -91,10 +91,10 @@ export function playbook(m: Mapping, ref?: string): string {
         `- customer.status: the latest state each system holds them in, in words ("Active, identity approved", "Sends and withdrawals blocked"), with when it was set.`,
         `- records: what they own or touched: wallet address, deposit account, linked bank (bank name and last four only), every ${m.processor} transfer, every ${m.app} send. The note carries amount, method and state.`,
         `- facts: at most five full sentences, the ones ${m.processor} needs to decide, each with its one source. Numbers and times go in the sentence.`,
-        `- events: the timeline. One entry per thing that moved the story: account created, identity verified, deposit arrived, hold, support message, block, send attempt. actor is who did it. refs carries the ids and event names behind it. quote only for the customer's or support's own words, verbatim.`,
+        `- events: the timeline. One entry per thing that moved the story: account created, identity verified, deposit arrived, hold, support message, block, send attempt. Only what a system recorded; never inferred behavior. An analytics heuristic such as $rageclick is not an event, it goes in the audit named as a heuristic. actor is who did it. refs carries the ids and event names behind it. quote only for the customer's or support's own words, verbatim.`,
         `- audit: everything, in time order: every screen with the seconds spent on it (seconds is the gap to the next screen in the same session; the last screen of a session has none), every message verbatim as quote, every webhook, every app action, every sighting. actor where known.`,
         `- identity: account_created_at; verified_by "${m.processor}" and verified_at when identity was approved; residence as region and country; funding_name_matches is whether the linked bank's owner name matches the customer's legal name (compare them, then mask both); history is one sentence on the account's age and what it did before this.`,
-        `- access: one block per device and IP pair, labelled for what it is ("Signup phone, mobile data", "Same phone, home Wi-Fi", "New Android, VPN"): ip, location as city, region and country, connection (vpn when flagged, else unknown), device from platform, model and OS, app_version, first_seen, last_seen, sessions, other_accounts.`,
+        `- access: one block per device and network, in time order, labelled so the reader sees the story ("Signup phone, the network of the day of the fraud", "Same phone, a new network, five days after the block", "New Android, VPN"): ip, location as city, region and country, connection (vpn when flagged, else unknown), device from platform, model and OS, app_version, first_seen, last_seen, sessions, other_accounts. Two addresses of the same phone at the same time (IPv4 and IPv6) are one block; the other address goes in the audit.`,
         `- related: every other customer sharing a device, IP address, bank account or send recipient: as the ${m.processor} customer when they have one (system "${m.processor}", kind "customer"), else the ${m.app} user. via says what is shared ("Same device", "Same send recipient").`,
         `- reviewer: "${m.reviewer}".`,
       ].join("\n"),
