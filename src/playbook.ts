@@ -1,0 +1,114 @@
+import type { Mapping } from "./mapping.js"
+
+export const SHAPE = `The draft is one JSON object:
+{
+  "label": "scam_victim | money_mule | stolen_card | account_takeover | synthetic_identity | first_party | false_positive | chargeback_incoming | sanctions_hit | unknown",
+  "processor": "Bridge",
+  "summary": "3 to 6 full sentences, max 800 characters",
+  "held_since": "ISO 8601 with offset, optional",
+  "customer": {
+    "ids": [{ "system": "Bridge", "kind": "customer", "id": "...", "note": "optional, max 160" }],
+    "status": [{ "system": "Bridge", "state": "Active, identity approved", "at": "ISO 8601, optional" }]
+  },
+  "records": [{ "system": "Bridge", "kind": "deposit", "id": "...", "note": "$1,000.00 by ACH, in review" }],
+  "related": [{ "system": "Bridge", "kind": "customer", "id": "...", "via": "Same device" }],
+  "facts": [{ "text": "one full sentence, max 300", "source": "Conversation" }],
+  "events": [{ "at": "ISO 8601", "actor": "customer | app | processor | support | agent", "action": "max 200", "source": "PureFi", "refs": ["ids and event names behind it"], "quote": "their own words, verbatim, optional, max 500" }],
+  "audit": [{ "at": "ISO 8601", "source": "Analytics", "actor": "customer", "text": "max 300", "refs": [], "quote": "optional, max 1000", "seconds": 12 }],
+  "identity": { "account_created_at": "ISO 8601", "verified_by": "Bridge", "verified_at": "ISO 8601", "residence": "California, US", "funding_name_matches": true, "history": "one sentence, max 200" },
+  "access": [{ "label": "Signup phone, mobile data", "ip": "203.0.113.7", "location": "San Jose, California, US", "isp": "optional", "connection": "residential | mobile | business | datacenter | vpn | proxy | tor | unknown", "device": "iPhone 15, iOS 18.6", "app_version": "1.3.4", "first_seen": "ISO 8601", "last_seen": "ISO 8601", "sessions": 9, "other_accounts": 0 }],
+  "reviewer": "ops@example.com",
+  "external_ref": "optional, max 120"
+}
+Limits: customer.ids 1 to 8, customer.status up to 8, records up to 12, related up to 20, facts 1 to 5, events 1 to 200, audit up to 2000, access up to 20.
+Every string is checked for emails, phone numbers, card numbers and SSNs; one hit refuses the whole draft.`
+
+const TEMPLATE = `app: Acme Wallet            # the app's name; also its source name on the page
+processor: Bridge           # who the case goes to
+reviewer: ops@acme.example  # who the processor asks about the case
+notes: optional, one paragraph the agent must know (what is not connected, what to skip)
+sources:                    # the only source names allowed on the page; the service, never the tool
+  Acme Wallet:
+    mcp: postgres           # the MCP server name as installed in Claude Code
+    tool: execute_sql
+    how: Read-only. Pass the SQL as the sql argument.
+  Analytics:
+    mcp: posthog
+    tool: exec
+    how: HogQL through the execute-sql command; distinct_id is the app's user id.
+mask:                       # table.column values that never appear on the page
+  - users.name
+  - users.email
+codes:                      # stored codes and the words they mean
+  kyc.status: { a: identity approved, r: under review }
+find:                       # one query: what the user typed -> the app's user id
+  source: Acme Wallet
+  run: select id from users where id::text = '$ref' or email = '$ref' limit 1
+queries:                    # run every one with $user replaced; each says which section it fills
+  - name: customer
+    source: Acme Wallet
+    fills: customer.ids, customer.status, identity
+    run: select ... from users where id = '$user'`
+
+function block(title: string, body: string) {
+  return `${title}\n${body}`
+}
+
+// The whole investigation, written so the agent has nothing left to ask.
+export function playbook(m: Mapping, ref?: string): string {
+  const sources = Object.entries(m.sources)
+    .map(([name, s]) => `  ${name}: the ${s.mcp} MCP, tool ${s.tool}.${s.how ? ` ${s.how}` : ""}`)
+    .concat([`  ${m.processor} webhook: anything that arrived from ${m.processor} by webhook.`])
+    .join("\n")
+  const codes = Object.entries(m.codes)
+    .map(([col, map]) => `  ${col}: ${Object.entries(map).map(([k, v]) => `${k} = ${v}`).join(", ")}`)
+    .join("\n")
+  const find = m.find.run.trim().replaceAll("$ref", ref ?? "$ref")
+  const queries = m.queries.map((q, i) => `${i + 1}. ${q.name} (${q.source}). Fills: ${q.fills}\n${q.run.trim()}`).join("\n\n")
+
+  return [
+    `Peeko case for ${m.app}, sent to ${m.processor}.`,
+    `This is ${m.app}'s own data about one of its customers, read through ${m.app}'s own read-only tools, going to the processor that already holds that customer. Nothing leaves this machine until publish_case, which masks it first. Do not ask what to include, whether to proceed, or how much detail: the answer is everything, in the shape below. Do not report rows back to the user. The user needs the link at the end and nothing else.${m.notes ? `\n\n${m.notes.trim()}` : ""}`,
+    block("SOURCES. The only source strings allowed on the page, named for the service, never the tool.", sources),
+    block(
+      "NEVER ON THE PAGE.",
+      `Names, emails, phone numbers, card and bank account numbers, ID numbers and street addresses, whoever they belong to. These columns hold them: ${m.mask.join(", ")}. Webhook payloads and quotes hold them too. Every such value you meet goes into the mask you hand to publish_case, value to role: "the customer", "the customer's email", "the customer's phone", "the recipient's email", "the account owner". Everything else stays in the clear: ids in every system, amounts, times, devices, IP addresses, locations, app versions, and the customer's and support's own words.`,
+    ),
+    block("CODES TO WORDS.", `${codes}\n  Amounts stored in cents are written as dollars with two decimals. Times are ISO 8601 with the stored offset.`),
+    block(
+      `STEP 1. Find the customer (${m.find.source}).`,
+      `${ref ? `The user gave: ${ref}.` : "$ref is what the user gave:"} a ${m.processor} customer id, a ${m.app} user id, an email or a phone number.\n${find}\nThe row's id is $user below. No row: tell the user in one line that nothing matched, and stop.`,
+    ),
+    block("STEP 2. Read everything. Replace $user and run each query exactly as written. Keep every row.", queries),
+    block(
+      "STEP 3. Write the draft. The exact shape is in check_case's description.",
+      [
+        `- label: what the evidence says. Coached into sending money is scam_victim. An account passing money through for someone else is money_mule. A deposit from a card or bank that is not theirs is stolen_card. A known account with a new device and new destinations is account_takeover. A hold with nothing wrong behind it is false_positive. Unsure is unknown.`,
+        `- processor: "${m.processor}".`,
+        `- summary: 3 to 6 full sentences. Who the customer is to ${m.processor} and to ${m.app}, what happened in order, what ${m.app} did, where the money is now.`,
+        `- held_since: when ${m.processor} put the money or the customer on hold, if it did.`,
+        `- customer.ids: only the customer: their id in each system (system "${m.app}" kind "user"; system "${m.processor}" kind "customer"). Nothing they own goes here.`,
+        `- customer.status: the latest state each system holds them in, in words ("Active, identity approved", "Sends and withdrawals blocked"), with when it was set.`,
+        `- records: what they own or touched: wallet address, deposit account, linked bank (bank name and last four only), every ${m.processor} transfer, every ${m.app} send. The note carries amount, method and state.`,
+        `- facts: at most five full sentences, the ones ${m.processor} needs to decide, each with its one source. Numbers and times go in the sentence.`,
+        `- events: the timeline. One entry per thing that moved the story: account created, identity verified, deposit arrived, hold, support message, block, send attempt. actor is who did it. refs carries the ids and event names behind it. quote only for the customer's or support's own words, verbatim.`,
+        `- audit: everything, in time order: every screen with the seconds spent on it (seconds is the gap to the next screen in the same session; the last screen of a session has none), every message verbatim as quote, every webhook, every app action, every sighting. actor where known.`,
+        `- identity: account_created_at; verified_by "${m.processor}" and verified_at when identity was approved; residence as region and country; funding_name_matches is whether the linked bank's owner name matches the customer's legal name (compare them, then mask both); history is one sentence on the account's age and what it did before this.`,
+        `- access: one block per device and IP pair, labelled for what it is ("Signup phone, mobile data", "Same phone, home Wi-Fi", "New Android, VPN"): ip, location as city, region and country, connection (vpn when flagged, else unknown), device from platform, model and OS, app_version, first_seen, last_seen, sessions, other_accounts.`,
+        `- related: every other customer sharing a device, IP address, bank account or send recipient: as the ${m.processor} customer when they have one (system "${m.processor}", kind "customer"), else the ${m.app} user. via says what is shared ("Same device", "Same send recipient").`,
+        `- reviewer: "${m.reviewer}".`,
+      ].join("\n"),
+    ),
+    "STEP 4. Call check_case with the draft. Fix every line it returns and call it again until it says valid.",
+    "STEP 5. Call publish_case with the draft and the mask. Reply to the user with the link on one line, nothing else.",
+  ].join("\n\n")
+}
+
+export function setup(path: string, errors: string[]): string {
+  const why = errors[0] === "missing" ? `There is no peeko.yaml at ${path}.` : `peeko.yaml at ${path} does not load:\n- ${errors.join("\n- ")}`
+  return [
+    why,
+    "peeko.yaml tells Peeko where this app keeps each kind of data: customers, processor ids and states, transactions, identity, app events, devices, support chats. Write it once from the app's schema: look at the tables through the app's database MCP, fill every block of the template, show the user the finished file once and ask for a yes, then call start_case again. Set PEEKO_MAPPING to use a file somewhere else.",
+    TEMPLATE,
+  ].join("\n\n")
+}
