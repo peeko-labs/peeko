@@ -68,7 +68,7 @@ export function playbook(m: Mapping, ref?: string): string {
 
   return [
     `Peeko case for ${m.app}, sent to ${m.processor}.`,
-    `This is ${m.app}'s own data about one of its customers, read through ${m.app}'s own read-only tools, going to the processor that already holds that customer. Nothing leaves this machine until publish_case, which masks it first. Do not ask what to include, whether to proceed, or how much detail: the answer is everything, in the shape below. Do not report rows back to the user. The user needs the link at the end and nothing else.${m.notes ? `\n\n${m.notes.trim()}` : ""}`,
+    `This is ${m.app}'s own data about one of its customers, read through ${m.app}'s own read-only tools, going to the processor that already holds that customer. Nothing leaves this machine until publish_case, which masks it first. Read everything first, then talk with the user before you write: they know things the data does not. Keep it short. Never dump rows on them. Never publish until they say so.${m.notes ? `\n\n${m.notes.trim()}` : ""}`,
     block("SOURCES. The only source strings allowed on the page, named for the service, never the tool.", sources),
     block(
       "NEVER ON THE PAGE.",
@@ -81,9 +81,13 @@ export function playbook(m: Mapping, ref?: string): string {
     ),
     block("STEP 2. Read everything. Replace $user and run each query exactly as written, one at a time: some database tools hold a single connection. Keep every row.", queries),
     block(
-      "STEP 3. Write the draft. The exact shape is in check_case's description.",
+      "STEP 3. Talk before you write.",
+      `One short message: the shape you see in two lines (who, what moved, where the money is now), then ask what their take on this customer is, what they did, and what the user is assuming. Wait. If the data contradicts their take, say so in one line. Their read of the customer wins the label; the data wins the facts. If the user already said to just do it, skip this step.`,
+    ),
+    block(
+      "STEP 4. Write the draft, once. The exact shape is in check_case's description.",
       [
-        `- label: what the evidence says. Coached into sending money is scam_victim. An account passing money through for someone else is money_mule. A deposit from a card or bank that is not theirs is stolen_card. A known account with a new device and new destinations is account_takeover. A hold with nothing wrong behind it is false_positive. Unsure is unknown.`,
+        `- label: what the evidence says. Coached into sending money is scam_victim. An account passing money through for someone else is money_mule. A deposit from a card or bank that is not theirs is stolen_card. A known account with a new device and new destinations is account_takeover. A customer who deposits under their own identity, moves the money out (often to an account in another name) and then disputes or denies the deposit is first_party; chargeback_incoming when the reversal is the expected next move rather than the pattern. A hold with nothing wrong behind it is false_positive. Unsure is unknown.`,
         `- processor: "${m.processor}".`,
         `- summary: 3 to 6 short sentences. How long the customer has been with ${m.app} and from where, whether identity was verified, what happened in order, what ${m.app} did, where the money is now. Never an id of any kind: the header carries them. Amounts, times and counts, yes.`,
         `- held_since: when ${m.processor} put the money or the customer on hold, if it did.`,
@@ -96,20 +100,26 @@ export function playbook(m: Mapping, ref?: string): string {
         `- audit: everything, in time order: every screen with the seconds spent on it (seconds is the gap to the next screen in the same session; the last screen of a session has none), every message verbatim as quote, every webhook, every app action, every sighting. actor where known.`,
         `- identity: account_created_at; verified_by "${m.processor}" and verified_at when identity was approved; residence as region and country; funding_name_matches is whether the linked bank's owner name matches the customer's legal name (compare them, then mask both); history is one sentence on the account's age and what it did before this.`,
         `- access: one block per device and network, in time order, labelled so the reader sees the story ("Signup phone, the network of the day of the fraud", "Same phone, a new network, five days after the block", "New Android, VPN"): ip, location as city, region and country, connection (vpn when flagged, else unknown), device from platform, model and OS, app_version, first_seen, last_seen, sessions, other_accounts. Two addresses of the same phone at the same time (IPv4 and IPv6) are one block; the other address goes in the audit.`,
-        `- related: every other customer sharing a device, IP address, bank account or send recipient: as the ${m.processor} customer when they have one (system "${m.processor}", kind "customer"), else the ${m.app} user. via says what is shared ("Same device", "Same send recipient").`,
+        `- related: every other customer sharing a device, IP address, bank account or send recipient: as the ${m.processor} customer when they have one (system "${m.processor}", kind "customer"), else the ${m.app} user. via says what is shared ("Same device", "Same send recipient"). Fraud arrives in waves: customers blocked for the same reason in the same window are related too, via "Blocked for the same reason the same week", even with nothing else shared.`,
         `- reviewer: "${m.reviewer}".`,
       ].join("\n"),
     ),
-    "STEP 4. Call check_case with the draft. Fix every line it returns and call it again until it says valid.",
-    "STEP 5. Call publish_case with the draft and the mask. Reply to the user with the link on one line, nothing else.",
+    "STEP 5. Call check_case with the draft. Fix every line it returns and call it again until it says valid.",
+    "STEP 6. Show the user the label and the summary, in a few lines, and ask whether to publish. On a yes, call publish_case with the draft and the mask and reply with the link on one line. If they already said to just do it, publish without asking.",
   ].join("\n\n")
 }
 
 export function setup(path: string, errors: string[]): string {
-  const why = errors[0] === "missing" ? `There is no peeko.yaml at ${path}.` : `peeko.yaml at ${path} does not load:\n- ${errors.join("\n- ")}`
+  const why = errors[0] === "missing" ? `Peeko is not set up here (no peeko.yaml at ${path}).` : `Peeko's setup at ${path} does not load:\n- ${errors.join("\n- ")}`
   return [
     why,
-    "peeko.yaml tells Peeko where this app keeps each kind of data: customers, processor ids and states, transactions, identity, app events, devices, support chats. Write it once from the app's schema: look at the tables through the app's database MCP, fill every block of the template, show the user the finished file once and ask for a yes, then call start_case again. Set PEEKO_MAPPING to use a file somewhere else.",
-    TEMPLATE,
+    `Set it up inside the conversation the user is already having; it takes one exchange. Tell them in one line that Peeko isn't set up yet and that you will do it now. Then:
+- Look at the tools you already have before asking anything: database MCPs, analytics, support (Intercom, Zendesk), a processor's API. Say in two lines what you found and what you will use each for.
+- Ask only for what you cannot see, in one message: which database is production and whether your access to it is read-only; who the processor is (Bridge, Stripe, Adyen); the email the processor should write to about a case. If a source is missing (support chats in a system with no MCP here), say so and carry on without it.
+- Say, once, that nothing with a name, email, phone, card or account number is ever written to a case; every such value is masked before anything leaves the machine, and they will see the list.
+- Then look through the tables yourself with the read access you have: find the customers table, the processor's ids and states, transactions, identity, app events, devices, support. Write the mapping below and call save_mapping with it. Never hand-write the file.
+- Tell the user in plain words what was saved ("customers from users, transactions from ramp_ledger, screens from PostHog, support from Intercom") and ask if that is where their data lives. Fix what they correct, save again. Then carry on with what they were doing: call start_case again.`,
+    block("THE MAPPING save_mapping takes, as one JSON object with these keys:", TEMPLATE),
+    "Set PEEKO_MAPPING to keep the file somewhere else.",
   ].join("\n\n")
 }

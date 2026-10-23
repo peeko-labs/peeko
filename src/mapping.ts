@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs"
+import { readFileSync, writeFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { parse } from "yaml"
+import { parse, stringify } from "yaml"
 import { z } from "zod"
 
 // peeko.yaml: where this app keeps each kind of data. Written once per app, read on every case.
@@ -36,6 +36,14 @@ export function mappingPath() {
 
 export type LoadedMapping = { ok: true; path: string; mapping: Mapping } | { ok: false; path: string; errors: string[] }
 
+export function validateMapping(doc: unknown): { ok: true; mapping: Mapping } | { ok: false; errors: string[] } {
+  const parsed = MappingSchema.safeParse(doc)
+  if (!parsed.success) return { ok: false, errors: parsed.error.issues.map((i) => `${i.path.join(".") || "file"}: ${i.message}`) }
+  const unknown = [parsed.data.find.source, ...parsed.data.queries.map((q) => q.source)].filter((s) => !parsed.data.sources[s])
+  if (unknown.length) return { ok: false, errors: [`queries use sources not listed under sources: ${[...new Set(unknown)].join(", ")}`] }
+  return { ok: true, mapping: parsed.data }
+}
+
 export function loadMapping(): LoadedMapping {
   const path = mappingPath()
   let raw: string
@@ -50,9 +58,12 @@ export function loadMapping(): LoadedMapping {
   } catch (e) {
     return { ok: false, path, errors: [`not valid YAML: ${(e as Error).message}`] }
   }
-  const parsed = MappingSchema.safeParse(doc)
-  if (!parsed.success) return { ok: false, path, errors: parsed.error.issues.map((i) => `${i.path.join(".") || "file"}: ${i.message}`) }
-  const unknown = [parsed.data.find.source, ...parsed.data.queries.map((q) => q.source)].filter((s) => !parsed.data.sources[s])
-  if (unknown.length) return { ok: false, path, errors: [`queries use sources not listed under sources: ${[...new Set(unknown)].join(", ")}`] }
-  return { ok: true, path, mapping: parsed.data }
+  const v = validateMapping(doc)
+  return v.ok ? { ok: true, path, mapping: v.mapping } : { ok: false, path, errors: v.errors }
+}
+
+export function saveMapping(mapping: Mapping): string {
+  const path = mappingPath()
+  writeFileSync(path, "# Where this app keeps each kind of data Peeko puts on a case page. Written by Peeko, read on every case.\n" + stringify(mapping))
+  return path
 }
