@@ -2,7 +2,7 @@ import type { Mapping } from "./mapping.js"
 
 export const SHAPE = `The draft is one JSON object:
 {
-  "label": "scam_victim | money_mule | stolen_card | account_takeover | synthetic_identity | first_party | false_positive | chargeback_incoming | sanctions_hit | unknown",
+  "label": "scam_victim | money_mule | stolen_card | account_takeover | synthetic_identity | first_party | false_positive | chargeback_incoming | sanctions_hit | suspicious_activity | unknown",
   "processor": "Bridge",
   "summary": "3 to 6 full sentences, max 800 characters",
   "held_since": "ISO 8601 with offset, optional",
@@ -87,7 +87,7 @@ export function playbook(m: Mapping, ref?: string): string {
     block(
       "STEP 4. Write the draft, once. The exact shape is in check_case's description.",
       [
-        `- label: what the user told you in step 3, never your own guess. If they had no idea and asked you: coached into sending money is scam_victim. An account passing money through for someone else is money_mule. A deposit from a card or bank that is not theirs is stolen_card. A known account with a new device and new destinations is account_takeover. A customer who deposits under their own identity, moves the money out (often to an account in another name) and then disputes or denies the deposit is first_party; chargeback_incoming when the reversal is the expected next move rather than the pattern. A hold with nothing wrong behind it is false_positive. Unsure is unknown.`,
+        `- label: what the user told you in step 3, never your own guess. If they had no idea and asked you: coached into sending money is scam_victim. An account passing money through for someone else is money_mule. A deposit from a card or bank that is not theirs is stolen_card. A known account with a new device and new destinations is account_takeover. A customer who deposits under their own identity, moves the money out (often to an account in another name) and then disputes or denies the deposit is first_party; chargeback_incoming when the reversal is the expected next move rather than the pattern. A hold with nothing wrong behind it is false_positive. A pattern the company wants the processor to look at without calling it anything is suspicious_activity. Unsure is unknown.`,
         `- processor: "${m.processor}".`,
         `- summary: 3 to 6 short sentences. How long the customer has been with ${m.app} and from where, whether identity was verified, what happened in order, what ${m.app} did, where the money is now. Never an id of any kind: the header carries them. Amounts, times and counts, yes.`,
         `- held_since: when ${m.processor} put the money or the customer on hold, if it did.`,
