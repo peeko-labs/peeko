@@ -6,7 +6,7 @@ import { z } from "zod"
 import { loadMapping, saveMapping, validateMapping } from "./mapping.js"
 import { maskDraft } from "./mask.js"
 import { SHAPE, playbook, setup } from "./playbook.js"
-import { publishCase } from "./publish.js"
+import { grantAccess, publishCase } from "./publish.js"
 
 const INSTRUCTIONS = `Peeko builds the case page an app sends its payment processor about one customer: identifiers, accounts and transactions, identity, timeline, action audit, devices and network, with every name, email, phone, card and account number masked before anything leaves the machine.
 Peeko is in the room whenever the conversation is about a customer and risk: a hold, a block, a restriction, a dispute, a chargeback, fraud, a mule, or a processor asking questions about someone. Do not wait to be asked for "a Peeko case". When it comes up, call start_case with whatever identifies the customer.
@@ -74,19 +74,41 @@ server.registerTool(
   "publish_case",
   {
     title: "Publish a Peeko case",
-    description: "Masks the listed values, validates the draft, publishes it to Peeko and returns the link. The only call that sends anything.",
+    description: "Masks the listed values, validates the draft, publishes it to Peeko and returns the link. The link opens only for the emails in share_with and the reviewer; everyone else sees a request-access screen. Each email in share_with is sent its own sign-in link.",
     inputSchema: {
       draft: z.record(z.unknown()).describe("The case draft that passed check_case."),
       mask: z.record(z.string()).default({}).describe('Values that must not appear, each with what to say instead: {"Jane Doe": "the customer", "jane@example.com": "the customer\'s email"}.'),
+      share_with: z.array(z.string().email()).default([]).describe("Emails at the processor who may open the case. Ask the user who; an empty list means only the reviewer can open it until grant_access is called."),
     },
   },
-  async ({ draft, mask }) => {
+  async ({ draft, mask, share_with }) => {
     const masked = maskDraft(draft, mask)
     const r = validateDraft(masked.draft)
     if (!r.ok) return say(`Refused, nothing was sent. After masking, the draft still has:\n- ${r.errors.join("\n- ")}\nFix the draft or add the value to mask, then call publish_case again.`, true)
     try {
-      const { url } = await publishCase(r.draft)
-      return say(`Published, ${masked.replaced} values masked. Reply to the user with this link and nothing else:\n${url}`)
+      const { url, granted } = await publishCase(r.draft, share_with)
+      const who = granted.length ? ` Sign-in links went to ${granted.join(", ")}.` : " Nobody at the processor has been granted yet; call grant_access when the user names them."
+      return say(`Published, ${masked.replaced} values masked.${who} Reply to the user with this link and who was granted:\n${url}`)
+    } catch (e) {
+      return say((e as Error).message, true)
+    }
+  },
+)
+
+server.registerTool(
+  "grant_access",
+  {
+    title: "Share a Peeko case",
+    description: "Grants more emails access to a published case and sends each one its sign-in link. Use it when the user names who at the processor should see the case, or when someone requested access and the user says yes.",
+    inputSchema: {
+      case_id: z.string().describe("The case id from the link, the part after /c/."),
+      emails: z.array(z.string().email()).min(1).describe("Who may open the case."),
+    },
+  },
+  async ({ case_id, emails }) => {
+    try {
+      const granted = await grantAccess(case_id, emails)
+      return say(`Granted. Sign-in links went to ${granted.join(", ")}.`)
     } catch (e) {
       return say((e as Error).message, true)
     }

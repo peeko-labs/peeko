@@ -105,7 +105,7 @@ export function playbook(m: Mapping, ref?: string): string {
       ].join("\n"),
     ),
     "STEP 5. Call check_case with the draft. Fix every line it returns and call it again until it says valid.",
-    "STEP 6. Show the user the label and the summary, in a few lines, and ask whether to publish. On a yes, call publish_case with the draft and the mask and reply with the link on one line. If they already said to just do it, publish without asking.",
+    "STEP 6. Show the user the label and the summary, in a few lines, and ask whether to publish and who at the processor should be able to open it (their emails). The link opens only for those emails and the reviewer; anyone else lands on a request-access screen and the reviewer is emailed. On a yes, call publish_case with the draft, the mask and share_with, and reply with the link and who was granted. If they already said to just do it, publish without asking and tell them nobody is granted yet.",
   ].join("\n\n")
 }
 
