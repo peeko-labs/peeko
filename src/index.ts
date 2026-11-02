@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { validateDraft } from "@peeko/protocol"
 import { z } from "zod"
+import { apiKey, authorize } from "./credentials.js"
 import { loadMapping, saveMapping, validateMapping } from "./mapping.js"
 import { maskDraft } from "./mask.js"
 import { SHAPE, playbook, setup } from "./playbook.js"
@@ -25,8 +26,25 @@ server.registerTool(
     inputSchema: { ref: z.string().optional().describe("What the user gave: the processor's customer id, the app's user id, an email or a phone number.") },
   },
   async ({ ref }) => {
+    let authorized = ""
+    if (!apiKey()) {
+      try {
+        const a = await authorize()
+        if (!a.ok) {
+          return say(
+            a.fresh
+              ? `This terminal is not authorized with Peeko yet. Give the user this link and ask them to open it and press Authorize, then call start_case again:\n${a.url}`
+              : `Still waiting for the user to authorize this terminal. The link is:\n${a.url}\nCall start_case again once they say it is done.`,
+            true,
+          )
+        }
+        authorized = `Authorized as ${a.org}. `
+      } catch (e) {
+        return say((e as Error).message, true)
+      }
+    }
     const m = loadMapping()
-    return m.ok ? say(playbook(m.mapping, ref)) : say(setup(m.path, m.errors), true)
+    return m.ok ? say(authorized + playbook(m.mapping, ref)) : say(authorized + setup(m.path, m.errors), true)
   },
 )
 
@@ -127,4 +145,4 @@ server.registerPrompt(
   }),
 )
 
-await server.connect(new StdioServerTransport())
+void server.connect(new StdioServerTransport())

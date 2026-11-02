@@ -1,16 +1,20 @@
 {
-  "name": "@peeko/mcp",
+  "name": "peeko-mcp",
   "version": "0.0.1",
   "description": "The case you send your processor. An MCP that builds a masked fraud case from the systems you already have.",
   "license": "MIT",
   "type": "module",
-  "bin": { "peeko-mcp": "build/index.js" },
-  "files": ["build"],
+  "bin": {
+    "peeko-mcp": "build/index.cjs"
+  },
+  "files": [
+    "build"
+  ],
   "scripts": {
-    "build": "rm -rf build && tsc -p tsconfig.json && chmod +x build/index.js",
+    "build": "rm -rf build && esbuild src/index.ts --bundle --platform=node --target=node22 --format=cjs --outfile=build/index.cjs && chmod +x build/index.cjs",
     "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "check-types": "tsc --noEmit -p tsconfig.json",
-    "test": "node --test build/*.test.js"
+    "test": "node --test build/*.test.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
@@ -20,7 +24,12 @@
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
+    "esbuild": "^0.28.2",
     "typescript": "^5.7.3"
   },
-  "engines": { "node": ">=22" }
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": "github:peeko-labs/peeko",
+  "homepage": "https://peeko.sh"
 }

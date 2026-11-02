@@ -1,7 +1,9 @@
+import { apiKey, peekoUrl } from "./credentials.js"
+
 async function post(path: string, payload: unknown) {
-  const key = process.env.PEEKO_API_KEY
-  if (!key) throw new Error("PEEKO_API_KEY is not set. Install the MCP with the command on your Peeko dashboard.")
-  const res = await fetch(new URL(path, process.env.PEEKO_URL ?? "https://peeko.sh"), {
+  const key = apiKey()
+  if (!key) throw new Error("This terminal is not authorized with Peeko yet. Call start_case first.")
+  const res = await fetch(new URL(path, peekoUrl()), {
     method: "POST",
     // PEEKO_BYPASS is Vercel's automation bypass, needed only while the host sits behind Vercel's login wall.
     headers: { authorization: `Bearer ${key}`, "content-type": "application/json", ...(process.env.PEEKO_BYPASS ? { "x-vercel-protection-bypass": process.env.PEEKO_BYPASS } : {}) },
