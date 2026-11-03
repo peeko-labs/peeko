@@ -1,5 +1,5 @@
 {
-  "name": "peeko-mcp",
+  "name": "@peeko-labs/mcp",
   "version": "0.0.1",
   "description": "The case you send your processor. An MCP that builds a masked fraud case from the systems you already have.",
   "license": "MIT",
@@ -30,6 +30,12 @@
   "engines": {
     "node": ">=22"
   },
-  "repository": "github:peeko-labs/peeko",
-  "homepage": "https://peeko.sh"
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/peeko-labs/peeko.git"
+  },
+  "homepage": "https://peeko.sh",
+  "publishConfig": {
+    "access": "public"
+  }
 }
