@@ -1,6 +1,6 @@
 {
   "name": "@peeko-labs/mcp",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "The case you send your processor. An MCP that builds a masked fraud case from the systems you already have.",
   "license": "MIT",
   "type": "module",

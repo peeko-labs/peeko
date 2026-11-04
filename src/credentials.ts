@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs"
-import { homedir } from "node:os"
+import { homedir, hostname } from "node:os"
 import { join } from "node:path"
 
 const dir = join(homedir(), ".peeko")
@@ -61,7 +61,7 @@ export async function authorize(): Promise<{ ok: true; org: string } | { ok: fal
       return { ok: true, org: body.org }
     }
   }
-  const res = await fetch(new URL("/api/connect", peekoUrl()), { method: "POST" })
+  const res = await fetch(new URL("/api/connect", peekoUrl()), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: hostname() }) })
   if (!res.ok) throw new Error(`Peeko did not answer (${res.status}). Is ${peekoUrl()} reachable?`)
   const body = (await res.json()) as { code: string; url: string }
   savePending({ code: body.code, url: body.url, expires: Date.now() + 9 * 60 * 1000 })
