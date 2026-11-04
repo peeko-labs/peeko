@@ -48,7 +48,10 @@ queries:                    # run every one with $user replaced; each says which
   - name: customer
     source: Acme Wallet
     fills: customer.ids, customer.status, identity
-    run: select ... from users where id = '$user'`
+    run: select ... from users where id = '$user'
+past:                       # every customer the app already acted on: user id, what it did, why, when; newest first
+  source: Acme Wallet
+  run: select user_id, 'banned' as action, reason, created_at as at from bans order by created_at desc`
 
 function block(title: string, body: string) {
   return `${title}\n${body}`
@@ -119,8 +122,24 @@ export function setup(path: string, errors: string[]): string {
 - Ask only for what you cannot see, in one message: which database is production and whether your access to it is read-only; who the processor is (Bridge, Stripe, Adyen); the email the processor should write to about a case. If a source is missing (support chats in a system with no MCP here), say so and carry on without it.
 - Say, once, that nothing with a name, email, phone, card or account number is ever written to a case; every such value is masked before anything leaves the machine, and they will see the list.
 - Then look through the tables yourself with the read access you have: find the customers table, the processor's ids and states, transactions, identity, app events, devices, support. Write the mapping below and call save_mapping with it. Never hand-write the file.
+- Write past too: one query listing every customer the app already acted on (banned, blocked, held, refunded, disputed), with the user id, what it did, the reason it recorded and when, newest first. It is how Peeko catches up on history.
 - Tell the user in plain words what was saved ("customers from users, transactions from ramp_ledger, screens from PostHog, support from Intercom") and ask if that is where their data lives. Fix what they correct, save again. Then carry on with what they were doing: call start_case again.`,
     block("THE MAPPING save_mapping takes, as one JSON object with these keys:", TEMPLATE),
     "Set PEEKO_MAPPING to keep the file somewhere else.",
+  ].join("\n\n")
+}
+
+// Catching up on customers the app already acted on, so the first install fills the dashboard.
+export function backfill(m: Mapping, covered: Set<string>): string {
+  if (!m.past) {
+    return `peeko.yaml has no past query, so Peeko cannot list the customers ${m.app} already acted on. Look through the tables for where bans, blocks, holds, refunds and disputes are recorded, add past to the mapping (user id, what the app did, its reason, when, newest first), call save_mapping, then call backfill again.`
+  }
+  const skip = covered.size ? `\nThese ${m.app} user ids already have a case; skip them: ${[...covered].join(", ")}.` : ""
+  return [
+    `Catch up on the customers ${m.app} already acted on. Each gets a case only ${m.app}'s team can see; nothing goes to a processor until the user shares it.`,
+    block(`STEP 1. List them (${m.past.source}). Run exactly as written.`, `${m.past.run.trim()}${skip}`),
+    `STEP 2. Tell the user in two lines: how many customers, grouped by what ${m.app} did and its recorded reason, and how many have no money that ever moved through a processor (those are skipped: there is nothing for a processor to act on). Then propose the label for each reason group, from the reason ${m.app} recorded, never from your own read of the data: "suspected mule" is money_mule, "stolen card" is stolen_card, "chargeback" is first_party or chargeback_incoming, a reason that names no pattern is suspicious_activity. Ask one question: build these as team-only cases, with these labels? Wait for the yes. A group the user relabels takes their label.`,
+    `STEP 3. On the yes, work through them newest first, one customer at a time: call start_case with the user id and follow its playbook with these changes. Skip step 3 (the label is the one agreed for the group). Skip step 6: call publish_case with share_with empty and do not ask. Keep each case to what the data shows; never write a fact you inferred. Every five customers, tell the user in one line how far you are. If a draft will not pass check_case after two fixes, skip that customer and say so at the end.`,
+    `STEP 4. Finish with one short message: how many cases were built, how many were skipped and why, and that they are in the dashboard, visible only to the team, ready to share with the processor case by case.`,
   ].join("\n\n")
 }

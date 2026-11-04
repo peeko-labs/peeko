@@ -27,6 +27,7 @@ export const MappingSchema = z.object({
   codes: z.record(z.record(z.string())).default({}),
   find: QuerySchema.omit({ name: true, fills: true }),
   queries: z.array(QuerySchema).min(1),
+  past: QuerySchema.omit({ name: true, fills: true }).optional(),
 })
 export type Mapping = z.infer<typeof MappingSchema>
 
@@ -39,7 +40,7 @@ export type LoadedMapping = { ok: true; path: string; mapping: Mapping } | { ok:
 export function validateMapping(doc: unknown): { ok: true; mapping: Mapping } | { ok: false; errors: string[] } {
   const parsed = MappingSchema.safeParse(doc)
   if (!parsed.success) return { ok: false, errors: parsed.error.issues.map((i) => `${i.path.join(".") || "file"}: ${i.message}`) }
-  const unknown = [parsed.data.find.source, ...parsed.data.queries.map((q) => q.source)].filter((s) => !parsed.data.sources[s])
+  const unknown = [parsed.data.find.source, ...parsed.data.queries.map((q) => q.source), ...(parsed.data.past ? [parsed.data.past.source] : [])].filter((s) => !parsed.data.sources[s])
   if (unknown.length) return { ok: false, errors: [`queries use sources not listed under sources: ${[...new Set(unknown)].join(", ")}`] }
   return { ok: true, mapping: parsed.data }
 }

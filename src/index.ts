@@ -6,15 +6,16 @@ import { z } from "zod"
 import { apiKey, authorize } from "./credentials.js"
 import { loadMapping, saveMapping, validateMapping } from "./mapping.js"
 import { maskDraft } from "./mask.js"
-import { SHAPE, playbook, setup } from "./playbook.js"
-import { grantAccess, publishCase } from "./publish.js"
+import { SHAPE, backfill, playbook, setup } from "./playbook.js"
+import { coveredUsers, grantAccess, publishCase } from "./publish.js"
 
 const INSTRUCTIONS = `Peeko builds the case page an app sends its payment processor about one customer: identifiers, accounts and transactions, identity, timeline, action audit, devices and network, with every name, email, phone, card and account number masked before anything leaves the machine.
 Peeko is in the room whenever the conversation is about a customer and risk: a hold, a block, a restriction, a dispute, a chargeback, fraud, a mule, or a processor asking questions about someone. Do not wait to be asked for "a Peeko case". When it comes up, call start_case with whatever identifies the customer.
 If start_case says Peeko is not set up, tell the user in one line ("your Peeko isn't set up yet, doing it now") and set it up inside what they were doing: say what you can already see connected, ask only for what you cannot see, say that nothing with a name, email, phone, card or account number is ever written, look through their tables yourself, call save_mapping, and tell them in plain words what was saved.
-Once set up: read everything, give the shape in two lines, ask for their take, what the customer did, and what they are assuming. Their take is the label; never decide what the customer is yourself unless they say they have no idea. Draft once. Publish when they say so, or without asking when they said to just do it. Never put a name, email, phone, card or account number in a draft; hand those values to publish_case in mask.`
+Once set up: read everything, give the shape in two lines, ask for their take, what the customer did, and what they are assuming. Their take is the label; never decide what the customer is yourself unless they say they have no idea. Draft once. Publish when they say so, or without asking when they said to just do it. Never put a name, email, phone, card or account number in a draft; hand those values to publish_case in mask.
+Right after Peeko is first set up, offer to catch up on history: call backfill, which builds team-only cases for every customer the app already banned, blocked, held or refunded.`
 
-const server = new McpServer({ name: "peeko", version: "0.0.1" }, { instructions: INSTRUCTIONS })
+const server = new McpServer({ name: "peeko", version: "0.0.5" }, { instructions: INSTRUCTIONS })
 
 const say = (text: string, isError = false) => ({ content: [{ type: "text" as const, text }], isError })
 
@@ -61,8 +62,27 @@ server.registerTool(
     const path = saveMapping(v.mapping)
     const m = v.mapping
     return say(
-      `Saved to ${path}: ${m.app}, cases go to ${m.processor}, ${m.reviewer} answers them. Sources: ${Object.keys(m.sources).join(", ")}. ${m.queries.length} queries, ${m.mask.length} masked columns. Tell the user in plain words what was saved and ask if that is where their data lives; then call start_case.`,
+      `Saved to ${path}: ${m.app}, cases go to ${m.processor}, ${m.reviewer} answers them. Sources: ${Object.keys(m.sources).join(", ")}. ${m.queries.length} queries, ${m.mask.length} masked columns. Tell the user in plain words what was saved and ask if that is where their data lives. If this was the first setup, offer to catch up on the customers the app already acted on (call backfill on a yes); then call start_case for what they were doing.`,
     )
+  },
+)
+
+server.registerTool(
+  "backfill",
+  {
+    title: "Catch up on past customers",
+    description: "Builds team-only cases for every customer the app already banned, blocked, held or refunded, skipping ones that already have a case. Offer it right after the first setup, or when the user asks to catch up on history.",
+    inputSchema: {},
+  },
+  async () => {
+    if (!apiKey()) return say("This terminal is not authorized with Peeko yet. Call start_case first.", true)
+    const m = loadMapping()
+    if (!m.ok) return say(setup(m.path, m.errors), true)
+    try {
+      return say(backfill(m.mapping, await coveredUsers()))
+    } catch (e) {
+      return say((e as Error).message, true)
+    }
   },
 )
 

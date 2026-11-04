@@ -27,3 +27,13 @@ export async function grantAccess(caseId: string, emails: string[]): Promise<str
   if (!res.ok || !Array.isArray(body?.granted)) throw new Error(`Peeko refused the grant (${res.status}): ${body?.error ?? "no body"}`)
   return body.granted as string[]
 }
+
+// The app user ids that already have a case in this org.
+export async function coveredUsers(): Promise<Set<string>> {
+  const key = apiKey()
+  if (!key) throw new Error("This terminal is not authorized with Peeko yet. Call start_case first.")
+  const res = await fetch(new URL("/api/cases", peekoUrl()), { headers: { authorization: `Bearer ${key}` } })
+  const body = (await res.json().catch(() => null)) as { cases?: { user_ids?: string[] }[] } | null
+  if (!res.ok || !Array.isArray(body?.cases)) throw new Error(`Peeko could not list cases (${res.status}).`)
+  return new Set(body.cases.flatMap((c) => c.user_ids ?? []))
+}
