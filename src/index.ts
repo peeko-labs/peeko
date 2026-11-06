@@ -12,10 +12,10 @@ import { coveredUsers, grantAccess, publishCase } from "./publish.js"
 const INSTRUCTIONS = `Peeko builds the case page an app sends its payment processor about one customer: identifiers, accounts and transactions, identity, timeline, action audit, devices and network, with every name, email, phone, card and account number masked before anything leaves the machine.
 Peeko is in the room whenever the conversation is about a customer and risk: a hold, a block, a restriction, a dispute, a chargeback, fraud, a mule, or a processor asking questions about someone. Do not wait to be asked for "a Peeko case". When it comes up, call start_case with whatever identifies the customer.
 If start_case says Peeko is not set up, tell the user in one line ("your Peeko isn't set up yet, doing it now") and set it up inside what they were doing: say what you can already see connected, ask only for what you cannot see, say that nothing with a name, email, phone, card or account number is ever written, look through their tables yourself, call save_mapping, and tell them in plain words what was saved.
-Once set up: read everything, then make the call like a fraud analyst: the label, the processor and the facts that decide them, in a few lines. Ask only what the data cannot show (anything outside it, and who at the processor opens the case). The user's correction wins. Draft once. Publish when they say so, or without asking when they said to just do it. Never put a name, email, phone, card or account number in a draft; hand those values to publish_case in mask.
+Once set up: read everything, then make the call like a fraud analyst: the label, the processor and the facts that decide them, in a few lines. Ask only what the data cannot show. Cases go to the saved contacts at every processor the money touched. The user's correction wins. Draft once. Publish when they say so, or without asking when they said to just do it. Never put a name, email, phone, card or account number in a draft; hand those values to publish_case in mask.
 Right after Peeko is first set up, offer to catch up on history: call backfill, which builds team-only cases for every customer the app already banned, blocked, held or refunded.`
 
-const server = new McpServer({ name: "peeko", version: "0.0.6" }, { instructions: INSTRUCTIONS })
+const server = new McpServer({ name: "peeko", version: "0.0.7" }, { instructions: INSTRUCTIONS })
 
 const say = (text: string, isError = false) => ({ content: [{ type: "text" as const, text }], isError })
 
@@ -62,7 +62,7 @@ server.registerTool(
     const path = saveMapping(v.mapping)
     const m = v.mapping
     return say(
-      `Saved to ${path}: ${m.app}, cases go to ${m.processor}, ${m.reviewer} answers them. Sources: ${Object.keys(m.sources).join(", ")}. ${m.queries.length} queries, ${m.mask.length} masked columns. Tell the user in plain words what was saved and ask if that is where their data lives. If this was the first setup, offer to catch up on the customers the app already acted on (call backfill on a yes); then call start_case for what they were doing.`,
+      `Saved to ${path}: ${m.app}, cases go to ${m.processor}, ${m.reviewer} answers them. Sources: ${Object.keys(m.sources).join(", ")}. ${m.queries.length} queries, ${m.mask.length} masked columns, contacts at ${Object.keys(m.contacts).join(", ") || "no processor yet"}. Tell the user in one line what was saved. If this was the first setup, ask in one line whether to build cases for the customers they already banned (call backfill on a yes); then carry on with what they were doing.`,
     )
   },
 )
@@ -116,7 +116,7 @@ server.registerTool(
     inputSchema: {
       draft: z.record(z.unknown()).describe("The case draft that passed check_case."),
       mask: z.record(z.string()).default({}).describe('Values that must not appear, each with what to say instead: {"Jane Doe": "the customer", "jane@example.com": "the customer\'s email"}.'),
-      share_with: z.array(z.string().email()).default([]).describe("Emails at the processor who may open the case. Ask the user who; an empty list means only the reviewer can open it until grant_access is called."),
+      share_with: z.array(z.string().email()).default([]).describe("The saved contacts at every processor in the case. An empty list means only the reviewer can open it until grant_access is called."),
     },
   },
   async ({ draft, mask, share_with }) => {

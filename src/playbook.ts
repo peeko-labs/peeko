@@ -49,6 +49,9 @@ queries:                    # run every one with $user replaced; each says which
     source: Acme Wallet
     fills: customer.ids, customer.status, identity
     run: select ... from users where id = '$user'
+contacts:                   # who at each processor gets cases; email addresses only
+  Bridge: [risk@bridge.example]
+  Stripe: [disputes@stripe.example]
 past:                       # every customer the app already acted on: user id, what it did, why, when; newest first
   source: Acme Wallet
   run: select user_id, 'banned' as action, reason, created_at as at from bans order by created_at desc`
@@ -85,7 +88,7 @@ export function playbook(m: Mapping, ref?: string): string {
     block("STEP 2. Read everything. Replace $user and run each query exactly as written, one at a time: some database tools hold a single connection. Keep every row.", queries),
     block(
       "STEP 3. Make the call, then check it with the user.",
-      `You are the fraud analyst. Decide the processor and the label yourself from the evidence, using the label guide in step 4. The processor is the one this customer's money went through (the provider on deposits and withdrawals; when several did, the one that paid the money out or is holding it now). ${m.processor} is the default when the data does not say. If no processor ever moved money for this customer, say so in one line and ask whether they still want a case. Otherwise one short message: your label and processor, the two or three facts that decide it, and the one fact that would change your mind. When a second processor is exposed (the deposit can be reversed at one, the payout left through another), say who gets the case and who gets a heads-up. Then ask only what the data cannot tell you: anything that happened outside it (a dispute, a call, a police report) and who at the processor should open the case. Never ask for their take or what they are assuming. If they correct the label, theirs wins; if the data contradicts them, say so in one line. If the user said to just do it, do not ask: publish with your label and say what you chose and why in one line.`,
+      `You are the fraud analyst. Decide the processor and the label yourself from the evidence, using the label guide in step 4. The processor is the one this customer's money went through (the provider on deposits and withdrawals; when several did, the one that paid the money out or is holding it now). ${m.processor} is the default when the data does not say. If no processor ever moved money for this customer, say so in one line and ask whether they still want a case. Otherwise one short message: your label and processor, the two or three facts that decide it, and the one fact that would change your mind. When a second processor is exposed (the deposit can be reversed at one, the payout left through another), the case goes to both: name the one that owns it (processor) and the other that gets it too. Then ask only what the data cannot tell you: anything that happened outside it (a dispute, a call, a police report). Never ask for their take or what they are assuming. If they correct the label, theirs wins; if the data contradicts them, say so in one line. If the user said to just do it, do not ask: publish with your label and say what you chose and why in one line.`,
     ),
     block(
       "STEP 4. Write the draft, once. The exact shape is in check_case's description.",
@@ -109,7 +112,7 @@ export function playbook(m: Mapping, ref?: string): string {
       ].join("\n"),
     ),
     "STEP 5. Call check_case with the draft. Fix every line it returns and call it again until it says valid.",
-    "STEP 6. Show the user the label and the summary, in a few lines, and ask whether to publish and who at the processor should be able to open it (their emails). The link opens only for those emails and the reviewer; anyone else lands on a request-access screen and the reviewer is emailed. On a yes, call publish_case with the draft, the mask and share_with, and reply with the link and who was granted. If they already said to just do it, publish without asking and tell them nobody is granted yet.",
+    `STEP 6. Share with every processor in the case: the contacts saved for each (${Object.entries(m.contacts).map(([p, e]) => `${p}: ${e.join(", ")}`).join("; ") || "none saved yet"}). A processor with no contacts: ask once who there should get it, or offer to check their email for them, and save the answer with save_mapping. Then one line: "Publishing to <who>. OK?" On a yes, call publish_case with the draft, the mask and share_with, and reply with the link and who got it. If they said to just do it, publish to the saved contacts without asking.`,
   ].join("\n\n")
 }
 
@@ -117,13 +120,14 @@ export function setup(path: string, errors: string[]): string {
   const why = errors[0] === "missing" ? `Peeko is not set up here (no peeko.yaml at ${path}).` : `Peeko's setup at ${path} does not load:\n- ${errors.join("\n- ")}`
   return [
     why,
-    `Set it up inside the conversation the user is already having; it takes one exchange. Tell them in one line that Peeko isn't set up yet and that you will do it now. Then:
-- Look at the tools you already have before asking anything: database MCPs, analytics, support (Intercom, Zendesk), a processor's API. Say in two lines what you found and what you will use each for.
-- Ask only for what you cannot see, in one message: which database is production and whether your access to it is read-only; who the processor is (Bridge, Stripe, Adyen); the email the processor should write to about a case. If a source is missing (support chats in a system with no MCP here), say so and carry on without it.
-- Say, once, that nothing with a name, email, phone, card or account number is ever written to a case; every such value is masked before anything leaves the machine, and they will see the list.
-- Then look through the tables yourself with the read access you have: find the customers table, the processor's ids and states, transactions, identity, app events, devices, support. Write the mapping below and call save_mapping with it. Never hand-write the file.
-- Write past too: one query listing every customer the app already acted on (banned, blocked, held, refunded, disputed), with the user id, what it did, the reason it recorded and when, newest first. It is how Peeko catches up on history.
-- Tell the user in plain words what was saved ("customers from users, transactions from ramp_ledger, screens from PostHog, support from Intercom") and ask if that is where their data lives. Fix what they correct, save again. Then carry on with what they were doing: call start_case again.`,
+    `Set it up inside the conversation the user is already having. Every message is short: say what you will do and ask for permission; never explain more than a line. Tell them in one line that Peeko isn't set up yet and you will do it now. Then:
+- Look at the tools you already have before asking: database, analytics, support (Intercom, Zendesk), email (Gmail, Outlook), a processor's API. In one message, say which you will read and ask permission: "I'll read your production database (read-only), PostHog and Intercom to set this up. OK?" Ask in the same message only what you cannot see: which database is production, and the email processors should write to about a case.
+- If an email tool is connected, ask in that same message: "Can I check your email for your contacts at your payment processors? I'll save only their email addresses." On a yes, search for mail from and to the processors' domains (stripe.com, bridge.xyz, adyen.com, and any processor the data names), and keep only addresses of people at a processor who handle risk, compliance, disputes or the account. Never save a message, a subject, a name or anyone else's address. No email tool or a no: ask once, later, who at each processor should get cases.
+- Say once, in one line, that names, emails, phone numbers, card and account numbers never go on a case.
+- Read the tables yourself: customers, the processors' ids and states, transactions, identity, app events, devices, support. Write the mapping below and call save_mapping with it. Never hand-write the file.
+- Write past too: one query listing every customer the app already acted on (banned, blocked, held, refunded, disputed), with the user id, what it did, the reason it recorded and when, newest first.
+- Write contacts: each processor's name to the addresses found.
+- Then one short message: what was saved in a line ("customers from users, money from ramp_ledger, screens from PostHog, support from Intercom; 3 contacts at Bridge, 1 at Stripe"), and one question: "Want me to go through the customers you've already banned and build their cases?" Call backfill on a yes. Then carry on with what they were doing.`,
     block("THE MAPPING save_mapping takes, as one JSON object with these keys:", TEMPLATE),
     "Set PEEKO_MAPPING to keep the file somewhere else.",
   ].join("\n\n")

@@ -27,6 +27,7 @@ export const MappingSchema = z.object({
   codes: z.record(z.record(z.string())).default({}),
   find: QuerySchema.omit({ name: true, fills: true }),
   queries: z.array(QuerySchema).min(1),
+  contacts: z.record(z.array(z.string().email())).default({}),
   past: QuerySchema.omit({ name: true, fills: true }).optional(),
 })
 export type Mapping = z.infer<typeof MappingSchema>
